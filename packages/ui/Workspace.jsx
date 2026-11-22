@@ -289,7 +289,10 @@ export default function Workspace({
     <ScrollView
       keyboardShouldPersistTaps="handled"
       style={{ backgroundColor: "#f5f5ee" }}
-      contentContainerStyle={{ minHeight: "100%" }}
+      contentContainerStyle={{
+        minHeight: "100%",
+        paddingBottom: Platform.OS === "android" ? 56 : 0,
+      }}
     >
       <View
         style={{
@@ -397,7 +400,7 @@ export default function Workspace({
                 autoCorrect={false}
                 onChangeText={edit}
                 style={{
-                  minHeight: 148,
+                  minHeight: 96,
                   letterSpacing: 1.6,
                   lineHeight: 24,
                   textAlignVertical: "top",

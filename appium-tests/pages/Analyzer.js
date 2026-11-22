@@ -28,6 +28,8 @@ export class Analyzer {
     await el.click();
   }
   async check(c) {
+    if ((await this.d.getCurrentPackage()) !== "org.genescan.analyzer")
+      await this.d.activateApp("org.genescan.analyzer");
     if (await this.d.isKeyboardShown()) await this.d.hideKeyboard();
     if (
       ["draft", "androidBack", "keyboardBack", "backgroundDraft"].includes(
