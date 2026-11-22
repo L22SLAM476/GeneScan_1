@@ -159,7 +159,39 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+  android-build:
+    name: Build Android test APK
+    runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_GATEWAY_URL: http://localhost:8787
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - name: Build Android release APK
+        run: |
+          npx expo prebuild --platform android --no-install
+          cd android && ./gradlew assembleRelease -PreactNativeArchitectures=x86_64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-test-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 1
+
   appium:
+    needs: android-build
     name: Appium Android tests (group ${{ matrix.group }})
     strategy:
       fail-fast: false
@@ -197,17 +229,17 @@ jobs:
           node apps/gateway/server.js > "$RUNNER_TEMP/gateway.log" 2>&1 &
           for i in {1..30}; do curl -s -o /dev/null http://127.0.0.1:8787/ && exit 0; sleep 1; done
           exit 1
+      - uses: actions/download-artifact@v5
+        with:
+          name: android-test-apk
+          path: android-test
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
       - uses: android-actions/setup-android@v4
         with:
-          packages: platform-tools
-      - name: Build Android release APK
-        run: |
-          npx expo prebuild --platform android --no-install
-          cd android && ./gradlew assembleRelease -PreactNativeArchitectures=x86_64
+          packages: platform-tools emulator
       - name: Install Appium
         run: |
           npm install -g appium@3
@@ -220,11 +252,12 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
         with:
+          profile: pixel_2
           api-level: 35
           arch: x86_64
           script: |
             adb reverse tcp:8787 tcp:8787
-            adb install -r android/app/build/outputs/apk/release/app-release.apk
+            adb install -r android-test/app-release.apk
             bash -o pipefail -c "npm run appium 2>&1 | tee appium-tests/execution.log"
       - name: Verify every scheduled Android case passed
         run: node scripts/android-cases.js --verify
