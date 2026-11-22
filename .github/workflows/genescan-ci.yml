@@ -4,6 +4,15 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      full_android:
+        description: Run all Android cases
+        type: boolean
+        default: false
+
+defaults:
+  run:
+    shell: bash
 
 permissions:
   contents: read
@@ -14,8 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -29,6 +40,7 @@ jobs:
         run: |
           node --version
           npm ls --depth=0
+          npm test
           node scripts/db-test.js | tee "Vulnerability Test Results/db-check.log"
           node security/scripts/gateway-check.js | tee "Vulnerability Test Results/gateway-check.log"
       - name: Dependency audit
@@ -51,30 +63,36 @@ jobs:
           output: Vulnerability Test Results/trivy.json
           severity: HIGH,CRITICAL
           exit-code: "1"
-      - name: Gitleaks working tree scan
+      - name: Gitleaks tracked-source scan
         id: leaks
         continue-on-error: true
-        run: docker run --rm -v "$PWD:/repo" -w /repo -u "$(id -u):$(id -g)" zricethezav/gitleaks:v8.24.3 dir --redact --report-format json --report-path "/repo/Vulnerability Test Results/gitleaks.json" /repo
+        run: docker run --rm -v "$PWD:/repo" -w /repo -u "$(id -u):$(id -g)" zricethezav/gitleaks:v8.24.3 git --redact --report-format json --report-path "/repo/Vulnerability Test Results/gitleaks.json"
       - if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: critical
       - name: Generate security workbook
+        env:
+          AUDIT: ${{ steps.audit.outcome }}
+          SAST: ${{ steps.semgrep.outcome }}
+          TRIVY: ${{ steps.trivy.outcome }}
+          LEAKS: ${{ steps.leaks.outcome }}
         if: always()
         run: python scripts/reports.py security
       - name: Upload security results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-assessment
           path: |
             Vulnerability Test Results/*.xlsx
             Vulnerability Test Results/*.md
+            Vulnerability Test Results/*.json
             Vulnerability Test Results/db-check.log
             Vulnerability Test Results/gateway-check.log
           retention-days: 30
           if-no-files-found: error
-      - name: Fail on critical security findings
+      - name: Fail on security scanner findings
         if: always()
         env:
           AUDIT: ${{ steps.audit.outcome }}
@@ -88,8 +106,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -99,9 +117,9 @@ jobs:
           python -m pip install openpyxl
       - name: Clear prior run evidence
         run: rm -f selenium-tests/results.ndjson selenium-tests/*.log selenium-tests/*-report.xlsx
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: 2.108.0
       - name: Start isolated local Supabase fixture
         run: |
           supabase start -x studio,imgproxy,logflare,vector,supavisor,edge-runtime,postgres-meta >/dev/null
@@ -112,7 +130,7 @@ jobs:
           for i in {1..30}; do curl -s -o /dev/null http://127.0.0.1:8787/ && exit 0; sleep 1; done
           exit 1
       - id: chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
         with:
           install-chromedriver: true
       - name: Build and serve web app
@@ -131,7 +149,7 @@ jobs:
         run: python scripts/reports.py selenium
       - name: Upload browser test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: selenium-test-report
           path: |
@@ -143,11 +161,13 @@ jobs:
 
   appium:
     name: Appium Android tests
+    env:
+      APPIUM_FULL: ${{ inputs.full_android && '1' || '0' }}
     runs-on: ubuntu-latest
     timeout-minutes: 100
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -157,9 +177,9 @@ jobs:
           python -m pip install openpyxl
       - name: Clear prior run evidence
         run: rm -f appium-tests/results.ndjson appium-tests/*.log appium-tests/*-report.xlsx
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: 2.108.0
       - name: Start isolated local Supabase fixture
         run: |
           supabase start -x studio,imgproxy,logflare,vector,supavisor,edge-runtime,postgres-meta >/dev/null
@@ -169,17 +189,17 @@ jobs:
           node apps/gateway/server.js > "$RUNNER_TEMP/gateway.log" 2>&1 &
           for i in {1..30}; do curl -s -o /dev/null http://127.0.0.1:8787/ && exit 0; sleep 1; done
           exit 1
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
       - name: Build Android release APK
         run: |
           npx expo prebuild --platform android --no-install
-          cd android && ./gradlew assembleRelease
+          cd android && ./gradlew assembleRelease -PreactNativeArchitectures=x86_64
       - name: Install Appium
         run: |
           npm install -g appium@3
@@ -203,7 +223,7 @@ jobs:
         run: python scripts/reports.py appium
       - name: Upload Android test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: appium-test-report
           path: |
@@ -218,8 +238,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -231,9 +251,9 @@ jobs:
         run: |
           mkdir -p performance/reports
           rm -f performance/reports/*
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: 2.108.0
       - name: Start isolated local Supabase fixture
         run: |
           supabase start -x studio,imgproxy,logflare,vector,supavisor,edge-runtime,postgres-meta >/dev/null
@@ -251,7 +271,7 @@ jobs:
         run: python scripts/reports.py performance
       - name: Upload performance results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: performance-baseline
           path: performance/reports/

@@ -113,6 +113,33 @@ test("Realtime proxy rejects origins outside the configured allowlist", async ()
   }
 });
 
+test("HTTP CORS reflects only an allowlisted configured origin", async () => {
+  const servers = await createTestServers();
+  try {
+    const allowed = await fetch(
+      `http://127.0.0.1:${servers.gatewayPort}/auth/v1/user`,
+      { method: "OPTIONS", headers: { Origin: allowedOrigin } },
+    );
+    assert.equal(allowed.status, 204);
+    assert.equal(
+      allowed.headers.get("access-control-allow-origin"),
+      allowedOrigin,
+    );
+
+    const rejected = await fetch(
+      `http://127.0.0.1:${servers.gatewayPort}/auth/v1/user`,
+      {
+        method: "OPTIONS",
+        headers: { Origin: "https://untrusted.example.test" },
+      },
+    );
+    assert.equal(rejected.status, 403);
+    assert.equal(rejected.headers.get("access-control-allow-origin"), null);
+  } finally {
+    await servers.close();
+  }
+});
+
 test("Realtime proxy only accepts the exact websocket path", async () => {
   const servers = await createTestServers();
   try {

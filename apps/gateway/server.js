@@ -29,6 +29,8 @@ export function createGateway({ upstream, key, origin }) {
       .filter(Boolean),
   );
   if (!allowedOrigins.size) throw Error("Set at least one WEB_ORIGIN.");
+  const configuredOrigins = [...allowedOrigins];
+  const defaultOrigin = configuredOrigins[0];
   if (key.startsWith("sb_secret_"))
     throw Error("Use a publishable or anon key.");
   if (
@@ -52,9 +54,12 @@ export function createGateway({ upstream, key, origin }) {
         res.writeHead(403).end();
         return;
       }
+      const responseOrigin =
+        configuredOrigins.find((configured) => configured === requestOrigin) ||
+        defaultOrigin;
       res.setHeader(
         "Access-Control-Allow-Origin",
-        requestOrigin || allowedOrigins.values().next().value,
+        responseOrigin,
       );
       res.setHeader(
         "Access-Control-Allow-Methods",

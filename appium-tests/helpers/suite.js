@@ -4,6 +4,22 @@ import { expect } from "chai";
 import config from "../appium.config.js";
 import cases, { mobileCases } from "../../scripts/scenarios.js";
 import { Analyzer } from "../pages/Analyzer.js";
+const appiumSmokeIds = new Set([
+  "002",
+  "273",
+  "291",
+  "305",
+  "311",
+  "318",
+  "319",
+  "320",
+  "323",
+  "326",
+  "331",
+  "332",
+  "333",
+  "335",
+]);
 export function suite(name, select) {
   describe(name, function () {
     let d, page;
@@ -11,7 +27,15 @@ export function suite(name, select) {
       d = await remote(config);
       page = new Analyzer(d);
     });
-    for (const c of cases.concat(mobileCases).filter(select))
+    for (const c of cases
+      .concat(mobileCases)
+      .filter(
+        (item) =>
+          select(item) &&
+          (process.env.APPIUM_FULL !== "0" ||
+            appiumSmokeIds.has(item.id) ||
+            mobileCases.some((mobileCase) => mobileCase.id === item.id)),
+      ))
       it("MOB-" + c.id + " " + c.title, async function () {
         if (
           ["signup", "recover"].includes(c.action) &&

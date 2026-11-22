@@ -46,6 +46,28 @@ def save(wb, path):
     assert check.sheetnames==wb.sheetnames
     check.close()
 
+def job_summary(title, rows):
+    path = os.getenv("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    counts = Counter(status for _, status in rows)
+    lines = ["## " + title, ""]
+    if rows:
+        fence = chr(96) * 3
+        lines += [fence + "mermaid", "pie showData"]
+        lines += [f'    "{status}" : {count}' for status, count in counts.items()]
+        lines += [fence, "", "<details><summary>Individual results</summary>", "",
+                  "| Case or check | Outcome |", "|---|---|"]
+        from html import escape
+        for name, status in rows:
+            label = escape(name).replace("|", "&#124;").replace("\n", " ")
+            lines.append(f"| {label} | {status} |")
+        lines += ["", "</details>"]
+    else:
+        lines.append("No execution results were recorded.")
+    with open(path, "a", encoding="utf8") as output:
+        output.write("\n".join(lines) + "\n")
+
 def e2e(kind):
     catalog=json.loads(subprocess.check_output(["node","--input-type=module","-e","import c,{mobileCases} from './scripts/scenarios.js';console.log(JSON.stringify(process.argv[1]==='appium'?c.concat(mobileCases):c))",kind]))
     folder=Path(kind+"-tests")
@@ -73,6 +95,7 @@ def e2e(kind):
     chart=BarChart();chart.title="Execution by module";chart.add_data(Reference(ws,min_col=2,max_col=4,min_row=1,max_row=ws.max_row),titles_from_data=True);chart.set_categories(Reference(ws,min_col=1,min_row=2,max_row=ws.max_row));ws.add_chart(chart,"F2")
     sheet(wb,"Defect Summary",["Test Case ID","Failure description","Severity"],defects)
     save(wb,folder/(kind+"-test-report.xlsx"))
+    job_summary(kind.title() + " test results", [(r[0]+" "+r[2], r[8]) for r in rows])
     print(kind,dict(counts))
 
 def performance():
@@ -83,6 +106,7 @@ def performance():
     for name,data in r.get("metrics",{}).items():
         for k,v in data.get("values",{}).items():rows.append([name,k,v])
     wb=book();sheet(wb,"Performance Summary",["Metric","Statistic","Value"],[["Run","Status",r["status"]],*rows]);save(wb,folder/"performance-summary.xlsx")
+    job_summary("Performance thresholds", [(m+" "+k, "PASSED" if v["ok"] else "FAILED") for m,d in r.get("metrics",{}).items() for k,v in d.get("thresholds",{}).items()])
     thresholds=[f"{m} {k} — {'PASS' if v['ok'] else 'FAIL'}" for m,d in r.get("metrics",{}).items() for k,v in d.get("thresholds",{}).items()]
     (folder/"performance-report.md").write_text("# Performance baseline\n\n"+r["status"]+"\n\n100 virtual users for 60 seconds. One dedicated account signs in during setup. Each iteration retrieves the authenticated user, saves a synthetic sequence and reads recent history. One-second think time.\n\n"+"\n".join(thresholds)+"\n\n| Metric | Statistic | Value |\n|---|---|---:|\n"+"".join(f"| {m} | {k} | {v} |\n" for m,k,v in rows))
 
@@ -100,6 +124,7 @@ def security():
         for v in t.get('Vulnerabilities',[]):findings.append([v.get('Severity'),v.get('VulnerabilityID'),t.get('Target'),'',v.get('Title'),v.get('PkgName'),'Review reachable versions','Review fixed version '+str(v.get('FixedVersion',''))])
     scanners={"npm audit":bool(audit.get('metadata')),"Trivy":bool(trivy.get('SchemaVersion') and isinstance(trivy.get('Results'),list)),"Gitleaks":isinstance(leaks,list),"Semgrep":isinstance(sem.get("results"),list) and not sem.get("errors")}
     checks={"Completed npm audit":scanners["npm audit"],"Completed Trivy":scanners["Trivy"],"Completed Gitleaks":scanners["Gitleaks"],"Completed Semgrep":scanners["Semgrep"],"Database policy checks":(d/'db-check.log').exists() and 'PASS' in (d/'db-check.log').read_text(encoding="utf-8-sig"),"Gateway contract checks":(d/'gateway-check.log').exists() and 'PASS' in (d/'gateway-check.log').read_text(encoding="utf-8-sig"),"No high / critical dependency alerts":bool(audit.get('metadata')) and all(v['severity'] not in ['critical','high'] for v in vulns.values()),"Production deployment verified":False,"Independent mobile security validation":False,"External assessment completed":False}
+    job_summary("Security scanner results", [(name, os.getenv(var, "not run")) for name,var in [("npm audit","AUDIT"),("Trivy","TRIVY"),("Gitleaks","LEAKS"),("Semgrep","SAST")]])
     score=10*sum(checks.values())
     for filename in ['endpoint-inventory.xlsx','findings.xlsx']:
         wb=book();sheet(wb,'Security Findings',['Severity','Vulnerability type','File path','Endpoint','Description','Exposure scenario','Impact','Recommended fix'],findings);sheet(wb,'Endpoint Inventory',['Endpoint','Method','Role / auth requirement','Source'],paths);sheet(wb,'Dependency Vulnerabilities',['Package','Severity','Affected versions','Fix available','Advisories'],deps);sheet(wb,'Risk Summary',['Evidence check','Satisfied'],list(checks.items()));save(wb,d/filename)

@@ -56,4 +56,10 @@ if summary_path:
     with open(summary_path, "a", encoding="utf-8") as output:
         output.write(summary)
 print(summary, end="")
-raise SystemExit(1 if audit_critical + trivy_critical else 0)
+scanner_failures = [name for name, outcome in scanner_status.items() if outcome != "success"]
+incomplete_reports = audit is None or trivy is None
+raise SystemExit(
+    1
+    if audit_critical + trivy_critical or scanner_failures or incomplete_reports
+    else 0
+)
