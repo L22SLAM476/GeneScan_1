@@ -35,6 +35,15 @@ export class Analyzer {
   }
   async accountForm(c) {
     await this.click("Account");
+    const existingSignOut = await this.d.findElements(this.labelled("Sign out"));
+    if (existingSignOut.length) {
+      await existingSignOut[0].click();
+      await this.d.wait(
+        until.elementLocated(this.labelled("DNA sequence")),
+        8000,
+      );
+      await this.click("Account");
+    }
     if (!["Sign in", "persist", "logout"].includes(c.mode))
       await this.click(c.mode);
     const fill = async (label, value) => {
@@ -136,7 +145,9 @@ export class Analyzer {
       if (c.action === "auth") {
         await this.click("Account");
         await this.click(c.file);
-        return (await this.d.findElement(this.labelled(c.target))).isDisplayed()
+        return (
+          await this.d.wait(until.elementLocated(this.labelled(c.target)), 5000)
+        ).isDisplayed()
           ? "visible"
           : "hidden";
       }
@@ -162,7 +173,7 @@ export class Analyzer {
         if (c.action === "save") {
           await this.click("Save analysis");
           return (
-            await this.d.findElement(this.labelled("Email"))
+            await this.d.wait(until.elementLocated(this.labelled("Email")), 5000)
           ).isDisplayed()
             ? "visible"
             : "hidden";
@@ -177,7 +188,9 @@ export class Analyzer {
     if (c.action !== "analyze") {
       await this.click("Account");
       if (c.action !== "Account") await this.click(c.action);
-      return (await this.d.findElement(this.labelled(c.target))).isDisplayed()
+      return (
+        await this.d.wait(until.elementLocated(this.labelled(c.target)), 5000)
+      ).isDisplayed()
         ? "visible"
         : "hidden";
     }

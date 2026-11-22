@@ -44,6 +44,8 @@ export function createGateway({ upstream, key, origin }) {
     !["localhost", "127.0.0.1"].includes(base.hostname)
   )
     throw Error("Supabase requires HTTPS.");
+  const userCache = new Map();
+  const userInFlight = new Map();
   const server = http.createServer(async (req, res) => {
     try {
       res.setHeader("Cache-Control", "no-store");
@@ -110,6 +112,54 @@ export function createGateway({ upstream, key, origin }) {
           return;
         }
         parts.push(part);
+      }
+      const authKey = req.headers.authorization;
+      if (
+        authKey &&
+        ((req.method === "POST" && path === "/auth/v1/logout") ||
+          (req.method === "PUT" && path === "/auth/v1/user"))
+      ) {
+        userCache.delete(authKey);
+        userInFlight.delete(authKey);
+      }
+      if (req.method === "GET" && path === "/auth/v1/user" && authKey) {
+        const cached = userCache.get(authKey);
+        if (cached && cached.expires > Date.now()) {
+          if (cached.contentType)
+            res.setHeader("content-type", cached.contentType);
+          res.writeHead(200).end(cached.body);
+          return;
+        }
+        let pending = userInFlight.get(authKey);
+        if (!pending) {
+          pending = fetch(dest, {
+            method: req.method,
+            headers,
+            redirect: "error",
+            signal: AbortSignal.timeout(20000),
+          })
+            .then(async (r) => {
+              const body = Buffer.from(await r.arrayBuffer());
+              const contentType = r.headers.get("content-type");
+              if (r.status === 200) {
+                userCache.set(authKey, {
+                  body,
+                  contentType,
+                  expires: Date.now() + 5000,
+                });
+              }
+              return { status: r.status, body, contentType };
+            })
+            .finally(() => {
+              userInFlight.delete(authKey);
+            });
+          userInFlight.set(authKey, pending);
+        }
+        const result = await pending;
+        if (result.contentType)
+          res.setHeader("content-type", result.contentType);
+        res.writeHead(result.status).end(result.body);
+        return;
       }
       const r = await fetch(dest, {
         method: req.method,

@@ -443,8 +443,13 @@ function Workspace() {
                     if (!selected) return;
                     run(async () => {
                       validateFile(selected.name, selected.size);
-                      edit(await selected.text());
-                      setFile(selected);
+                      const text = await selected.text();
+                      edit(text);
+                      setFile(
+                        new File([text], selected.name, {
+                          type: selected.type || "text/plain",
+                        }),
+                      );
                       setName(selected.name);
                     });
                   }}

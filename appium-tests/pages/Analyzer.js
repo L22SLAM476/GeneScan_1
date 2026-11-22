@@ -60,6 +60,12 @@ export class Analyzer {
     }
     if (c.action === "accountForm") {
       await this.click("Account");
+      const existingSignOut = await this.d.$("~Sign out");
+      if (await existingSignOut.isExisting()) {
+        await existingSignOut.click();
+        await this.element("DNA sequence");
+        await this.click("Account");
+      }
       if (!["Sign in", "persist", "logout"].includes(c.mode))
         await this.click(c.mode);
       const fill = async (label, value) => {
@@ -179,6 +185,8 @@ export class Analyzer {
       JSON.stringify("(.+:id/)?" + c.target) +
       ")";
     let value = await this.d.$("android=" + byId);
+    if (c.target === "message")
+      await value.waitForExist({ timeout: 8000 }).catch(() => {});
     if (!(await value.isExisting()))
       value = await this.d.$(
         "android=new UiScrollable(new UiSelector().scrollable(true)).scrollIntoView(" +

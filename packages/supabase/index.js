@@ -55,7 +55,14 @@ export async function save(db, name, result, file, raw = result.sequence) {
   const prefix = data.user.id + "/" + folder + "/";
   const storage = db.storage.from("genescan-private");
   const extension = filename?.split(".").pop().toLowerCase() || "txt";
-  const source = file ? await file.arrayBuffer() : raw;
+  let source = raw;
+  if (file) {
+    try {
+      source = await file.arrayBuffer();
+    } catch {
+      source = raw;
+    }
+  }
   const sourceKey = "source." + extension;
   const report = JSON.stringify({ name: label, filename, sourceKey, ...result });
   for (const [key, body, contentType] of [
