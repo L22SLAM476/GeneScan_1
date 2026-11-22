@@ -13,5 +13,5 @@ additional_redirect_urls = ["genescan://auth", "http://localhost:5173"]
 [auth.rate_limit]
 email_sent = 30
 [auth.email]
-enabled = true
+enable_signup = true
 enable_confirmations = false
