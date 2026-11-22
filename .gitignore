@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.expo/
+android/
+ios/
+.env*
+!.env.example
+*.log
+*.ndjson
+**/screenshots/
+**/*-report.xlsx
+performance/reports/*
+Vulnerability Test Results/*.json
+Vulnerability Test Results/*.xlsx
+Vulnerability Test Results/*.log
+supabase/.temp/

@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "GeneScan",
+    "slug": "genescan",
+    "scheme": "genescan",
+    "version": "1.0.0",
+    "orientation": "default",
+    "android": {
+      "package": "org.genescan.analyzer"
+    },
+    "ios": {
+      "bundleIdentifier": "org.genescan.analyzer"
+    },
+    "plugins": [
+      "expo-document-picker",
+      "./apps/mobile/withLocalGateway.cjs"
+    ]
+  }
+}

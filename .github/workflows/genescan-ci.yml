@@ -1,0 +1,255 @@
+name: GeneScan quality checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    name: Security and database checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: |
+          npm ci
+          python -m pip install openpyxl
+      - name: Clear generated audit reports
+        run: rm -f "Vulnerability Test Results"/*.json "Vulnerability Test Results"/*.xlsx "Vulnerability Test Results"/*.log
+      - name: Check dependencies and database controls
+        run: |
+          node --version
+          npm ls --depth=0
+          node scripts/db-test.js | tee "Vulnerability Test Results/db-check.log"
+          node security/scripts/gateway-check.js | tee "Vulnerability Test Results/gateway-check.log"
+      - name: Dependency audit
+        id: audit
+        continue-on-error: true
+        run: npm audit --json > "Vulnerability Test Results/npm-audit.json"
+      - name: Semgrep source audit
+        id: semgrep
+        continue-on-error: true
+        run: |
+          python -m pip install semgrep
+          semgrep scan --metrics=off --config p/javascript --config p/secrets --error --json -o "Vulnerability Test Results/semgrep.json" apps packages
+      - name: Trivy source audit
+        id: trivy
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          format: json
+          output: Vulnerability Test Results/trivy.json
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+      - name: Gitleaks working tree scan
+        id: leaks
+        continue-on-error: true
+        run: docker run --rm -v "$PWD:/repo" -w /repo -u "$(id -u):$(id -g)" zricethezav/gitleaks:v8.24.3 dir --redact --report-format json --report-path "/repo/Vulnerability Test Results/gitleaks.json" /repo
+      - if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: critical
+      - name: Generate security workbook
+        if: always()
+        run: python scripts/reports.py security
+      - name: Upload security results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-assessment
+          path: |
+            Vulnerability Test Results/*.xlsx
+            Vulnerability Test Results/*.md
+            Vulnerability Test Results/db-check.log
+            Vulnerability Test Results/gateway-check.log
+          retention-days: 30
+          if-no-files-found: error
+      - name: Fail on critical security findings
+        if: always()
+        env:
+          AUDIT: ${{ steps.audit.outcome }}
+          SAST: ${{ steps.semgrep.outcome }}
+          TRIVY: ${{ steps.trivy.outcome }}
+          LEAKS: ${{ steps.leaks.outcome }}
+        run: python scripts/security-gate.py
+
+  selenium:
+    name: Selenium browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: |
+          npm ci
+          python -m pip install openpyxl
+      - name: Clear prior run evidence
+        run: rm -f selenium-tests/results.ndjson selenium-tests/*.log selenium-tests/*-report.xlsx
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start isolated local Supabase fixture
+        run: |
+          supabase start -x studio,imgproxy,logflare,vector,supavisor,edge-runtime,postgres-meta >/dev/null
+          node scripts/ci-fixture.mjs
+      - name: Start local gateway
+        run: |
+          node apps/gateway/server.js > "$RUNNER_TEMP/gateway.log" 2>&1 &
+          for i in {1..30}; do curl -s -o /dev/null http://127.0.0.1:8787/ && exit 0; sleep 1; done
+          exit 1
+      - id: chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          install-chromedriver: true
+      - name: Build and serve web app
+        run: |
+          npm run build
+          npx vite apps/web --host 0.0.0.0 --port 5173 > "$RUNNER_TEMP/web.log" 2>&1 &
+          for i in {1..30}; do curl -fsS http://localhost:5173 >/dev/null && exit 0; sleep 1; done
+          exit 1
+      - name: Run browser tests
+        run: npm run selenium 2>&1 | tee selenium-tests/execution.log
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          CHROMEDRIVER: ${{ steps.chrome.outputs.chromedriver-path }}
+      - name: Generate browser test report
+        if: always()
+        run: python scripts/reports.py selenium
+      - name: Upload browser test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selenium-test-report
+          path: |
+            selenium-tests/selenium-test-report.xlsx
+            selenium-tests/screenshots/
+            selenium-tests/execution.log
+          retention-days: 30
+          if-no-files-found: error
+
+  appium:
+    name: Appium Android tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: |
+          npm ci
+          python -m pip install openpyxl
+      - name: Clear prior run evidence
+        run: rm -f appium-tests/results.ndjson appium-tests/*.log appium-tests/*-report.xlsx
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start isolated local Supabase fixture
+        run: |
+          supabase start -x studio,imgproxy,logflare,vector,supavisor,edge-runtime,postgres-meta >/dev/null
+          node scripts/ci-fixture.mjs
+      - name: Start local gateway
+        run: |
+          node apps/gateway/server.js > "$RUNNER_TEMP/gateway.log" 2>&1 &
+          for i in {1..30}; do curl -s -o /dev/null http://127.0.0.1:8787/ && exit 0; sleep 1; done
+          exit 1
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Build Android release APK
+        run: |
+          npx expo prebuild --platform android --no-install
+          cd android && ./gradlew assembleRelease
+      - name: Install Appium
+        run: |
+          npm install -g appium@3
+          appium driver install uiautomator2
+          appium > "$RUNNER_TEMP/appium.log" 2>&1 &
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          script: |
+            adb reverse tcp:8787 tcp:8787
+            adb install -r android/app/build/outputs/apk/release/app-release.apk
+            bash -o pipefail -c "npm run appium 2>&1 | tee appium-tests/execution.log"
+      - name: Generate Android test report
+        if: always()
+        run: python scripts/reports.py appium
+      - name: Upload Android test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appium-test-report
+          path: |
+            appium-tests/appium-test-report.xlsx
+            appium-tests/screenshots/
+            appium-tests/execution.log
+          retention-days: 30
+          if-no-files-found: error
+
+  performance:
+    name: Performance baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: |
+          npm ci
+          python -m pip install openpyxl
+      - name: Clear prior baseline evidence
+        run: rm -f performance/reports/*
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start isolated local Supabase fixture
+        run: |
+          supabase start -x studio,imgproxy,logflare,vector,supavisor,edge-runtime,postgres-meta >/dev/null
+          node scripts/ci-fixture.mjs
+      - name: Start local gateway
+        run: |
+          node apps/gateway/server.js > "$RUNNER_TEMP/gateway.log" 2>&1 &
+          for i in {1..30}; do curl -s -o /dev/null http://127.0.0.1:8787/ && exit 0; sleep 1; done
+          exit 1
+      - uses: grafana/setup-k6-action@v1
+      - name: Run 100-user baseline
+        run: k6 run performance/load-test.js 2>&1 | tee performance/reports/execution.log
+      - name: Generate performance report
+        if: always()
+        run: python scripts/reports.py performance
+      - name: Upload performance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-baseline
+          path: performance/reports/
+          retention-days: 30
+          if-no-files-found: error

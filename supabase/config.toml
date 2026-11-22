@@ -1,0 +1,17 @@
+project_id = "genescan"
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+[db]
+port = 54322
+major_version = 15
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["genescan://auth", "http://localhost:5173"]
+[auth.rate_limit]
+email_sent = 30
+[auth.email]
+enabled = true
+enable_confirmations = false
