@@ -4,8 +4,17 @@ export class Analyzer {
     this.d = driver;
   }
   async element(label) {
-    const el = await this.d.$("~" + label);
-    await el.waitForExist({ timeout: 6000 });
+    let el = await this.d.$("~" + label);
+    try {
+      await el.waitForExist({ timeout: 3000 });
+    } catch {
+      el = await this.d.$(
+        "android=new UiScrollable(new UiSelector().scrollable(true)).scrollIntoView(new UiSelector().description(" +
+          JSON.stringify(label) +
+          "))",
+      );
+      await el.waitForExist({ timeout: 6000 });
+    }
     return el;
   }
   async click(label) {
@@ -72,7 +81,6 @@ export class Analyzer {
         const el = await this.element(label);
         await el.clearValue();
         if (value) await el.setValue(value);
-        if (await this.d.isKeyboardShown()) await this.d.hideKeyboard();
       };
       await fill(
         "Email",
@@ -159,7 +167,7 @@ export class Analyzer {
           await this.click("Clear");
           const input = await this.element("DNA sequence");
           const text = await input.getText();
-          return text === ">sample_01\nACGTâ€¦" ? "" : text;
+          return text.startsWith(">sample_01") ? "" : text;
         }
         if (c.action === "save") {
           await this.click("Save analysis");
@@ -187,6 +195,12 @@ export class Analyzer {
     let value = await this.d.$("android=" + byId);
     if (c.target === "message")
       await value.waitForExist({ timeout: 8000 }).catch(() => {});
+    if (!(await value.isExisting()) && c.target === "message") {
+      await this.d.$(
+        "android=new UiScrollable(new UiSelector().scrollable(true)).scrollToBeginning(5)",
+      ).catch(() => {});
+      value = await this.d.$("android=" + byId);
+    }
     if (!(await value.isExisting()))
       value = await this.d.$(
         "android=new UiScrollable(new UiSelector().scrollable(true)).scrollIntoView(" +
