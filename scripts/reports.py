@@ -69,7 +69,7 @@ def job_summary(title, rows):
         output.write("\n".join(lines) + "\n")
 
 def e2e(kind):
-    catalog=json.loads(subprocess.check_output(["node","--input-type=module","-e","import c,{mobileCases} from './scripts/scenarios.js';console.log(JSON.stringify(process.argv[1]==='appium'?c.concat(mobileCases):c))",kind]))
+    catalog=json.loads(subprocess.check_output(["node","--input-type=module","-e","import c from './scripts/scenarios.js';import {androidCases} from './scripts/android-cases.js';console.log(JSON.stringify(process.argv[1]==='appium'?androidCases:c))",kind]))
     folder=Path(kind+"-tests")
     evidence={}
     if (folder/"results.ndjson").exists():

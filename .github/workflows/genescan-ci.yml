@@ -4,11 +4,7 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-    inputs:
-      full_android:
-        description: Run all Android cases
-        type: boolean
-        default: false
+
 
 defaults:
   run:
@@ -164,9 +160,13 @@ jobs:
           if-no-files-found: error
 
   appium:
-    name: Appium Android tests
+    name: Appium Android tests (group ${{ matrix.group }})
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4, 5, 6, 7, 8]
     env:
-      APPIUM_FULL: ${{ inputs.full_android && '1' || '0' }}
+      APPIUM_GROUP: ${{ matrix.group }}
     runs-on: ubuntu-latest
     timeout-minutes: 100
     steps:
@@ -226,6 +226,8 @@ jobs:
             adb reverse tcp:8787 tcp:8787
             adb install -r android/app/build/outputs/apk/release/app-release.apk
             bash -o pipefail -c "npm run appium 2>&1 | tee appium-tests/execution.log"
+      - name: Verify every scheduled Android case passed
+        run: node scripts/android-cases.js --verify
       - name: Generate Android test report
         if: always()
         run: python scripts/reports.py appium
@@ -233,7 +235,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: appium-test-report
+          name: appium-test-report-group-${{ matrix.group }}
           path: |
             appium-tests/appium-test-report.xlsx
             appium-tests/screenshots/
