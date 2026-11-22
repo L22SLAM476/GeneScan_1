@@ -109,10 +109,13 @@ export class Analyzer {
           await this.element("Saved");
           await this.d.background(2);
           await this.click("Dashboard");
+          await this.d.$(
+            'android=new UiSelector().textContains("Total saved analyses")',
+          ).waitForExist({ timeout: 8000 });
           const savedRow = await this.d.$(
-            "android=new UiSelector().textContains(" +
+            "android=new UiScrollable(new UiSelector().scrollable(true)).scrollIntoView(new UiSelector().textContains(" +
               JSON.stringify(name) +
-              ")",
+              "))",
           );
           await savedRow.waitForExist({ timeout: 8000 });
           await this.click("Account");
