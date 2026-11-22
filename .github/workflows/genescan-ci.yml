@@ -122,7 +122,11 @@ jobs:
           version: 2.108.0
       - name: Start isolated local Supabase fixture
         run: |
-          supabase start -x studio,imgproxy,logflare,vector,supavisor,edge-runtime,postgres-meta >/dev/null
+          for attempt in 1 2 3; do
+            supabase start -x studio,imgproxy,logflare,vector,supavisor,edge-runtime,postgres-meta >/dev/null && break
+            supabase stop --no-backup >/dev/null 2>&1 || true
+            sleep 3
+          done
           node scripts/ci-fixture.mjs
       - name: Start local gateway
         run: |
@@ -182,7 +186,11 @@ jobs:
           version: 2.108.0
       - name: Start isolated local Supabase fixture
         run: |
-          supabase start -x studio,imgproxy,logflare,vector,supavisor,edge-runtime,postgres-meta >/dev/null
+          for attempt in 1 2 3; do
+            supabase start -x studio,imgproxy,logflare,vector,supavisor,edge-runtime,postgres-meta >/dev/null && break
+            supabase stop --no-backup >/dev/null 2>&1 || true
+            sleep 3
+          done
           node scripts/ci-fixture.mjs
       - name: Start local gateway
         run: |
@@ -256,7 +264,11 @@ jobs:
           version: 2.108.0
       - name: Start isolated local Supabase fixture
         run: |
-          supabase start -x studio,imgproxy,logflare,vector,supavisor,edge-runtime,postgres-meta >/dev/null
+          for attempt in 1 2 3; do
+            supabase start -x studio,imgproxy,logflare,vector,supavisor,edge-runtime,postgres-meta >/dev/null && break
+            supabase stop --no-backup >/dev/null 2>&1 || true
+            sleep 3
+          done
           node scripts/ci-fixture.mjs
       - name: Start local gateway
         run: |

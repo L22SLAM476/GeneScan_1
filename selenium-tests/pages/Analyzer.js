@@ -10,10 +10,11 @@ export class Analyzer {
   labelled(name) {
     return By.css('[aria-label="' + name + '"]');
   }
+  async element(name) {
+    return this.d.wait(until.elementLocated(this.labelled(name)), 5000);
+  }
   async click(label) {
-    await (
-      await this.d.wait(until.elementLocated(this.labelled(label)), 5000)
-    ).click();
+    await (await this.element(label)).click();
   }
   async importFile(filename, contents) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "genescan-"));
@@ -47,7 +48,7 @@ export class Analyzer {
     if (!["Sign in", "persist", "logout"].includes(c.mode))
       await this.click(c.mode);
     const fill = async (label, value) => {
-      const el = await this.d.findElement(this.labelled(label));
+      const el = await this.element(label);
       await el.clear();
       if (value) await el.sendKeys(value);
     };
@@ -104,7 +105,9 @@ export class Analyzer {
         }
       }, 8000);
       await this.d.wait(until.elementLocated(this.labelled("Saved")), 8000);
-      const restored = await this.d.findElement(this.labelled("DNA sequence")).getAttribute("value");
+      const restored = await (
+        await this.element("DNA sequence")
+      ).getAttribute("value");
       if (restored !== "ATGCNN") throw Error("Reopened sequence differs from saved input.");
       await this.click("Account");
     }
@@ -119,12 +122,10 @@ export class Analyzer {
     if (c.action === "draft") {
       await this.click("Analyzer");
       await this.click("Clear");
-      await this.d.findElement(this.labelled("DNA sequence")).sendKeys(c.raw);
+      await (await this.element("DNA sequence")).sendKeys(c.raw);
       await this.click("Account");
       await this.click("Analyzer");
-      return this.d
-        .findElement(this.labelled("DNA sequence"))
-        .getAttribute("value");
+      return (await this.element("DNA sequence")).getAttribute("value");
     }
     if (["signup", "recover"].includes(c.action)) {
       const register = c.action === "signup";
@@ -157,7 +158,7 @@ export class Analyzer {
         if (!["example.csv", "large.txt"].includes(c.file))
           await this.click("Analyze");
       } else {
-        const el = await this.d.findElement(this.labelled("DNA sequence"));
+        const el = await this.element("DNA sequence");
         await el.sendKeys(c.raw);
         if (c.action === "rotate") {
           await this.d.manage().window().setRect({ width: 480, height: 850 });
@@ -188,13 +189,11 @@ export class Analyzer {
     if (c.action !== "analyze") {
       await this.click("Account");
       if (c.action !== "Account") await this.click(c.action);
-      return (
-        await this.d.wait(until.elementLocated(this.labelled(c.target)), 5000)
-      ).isDisplayed()
+      return (await this.element(c.target)).isDisplayed()
         ? "visible"
         : "hidden";
     }
-    const seq = await this.d.findElement(this.labelled("DNA sequence"));
+    const seq = await this.element("DNA sequence");
     await this.click("Clear");
     // Paste semantics preserve literal tabs, CRLF and non-BMP characters.
     if (c.raw)
