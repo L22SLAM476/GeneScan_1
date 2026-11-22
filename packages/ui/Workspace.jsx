@@ -139,7 +139,7 @@ export default function Workspace({
     };
   }, [db]);
   useEffect(() => {
-    if (!db || !session?.user.id) return;
+    if (!db || !session?.user.id || page !== "Dashboard") return;
     const userId = session.user.id;
     let channel = db.channel("genescan-user-" + userId);
     for (const table of [
@@ -173,7 +173,7 @@ export default function Workspace({
     return () => {
       db.removeChannel(channel);
     };
-  }, [db, session?.user.id]);
+  }, [db, session?.user.id, page]);
   useEffect(() => {
     let alive = true;
     if (session && page === "Dashboard") {
@@ -297,7 +297,8 @@ export default function Workspace({
           borderBottomWidth: 1,
           borderColor: line,
           paddingHorizontal: wide ? 48 : 14,
-          paddingVertical: wide ? 14 : 10,
+          paddingTop: (wide ? 14 : 10) + (Platform.OS === "android" ? 24 : 0),
+          paddingBottom: wide ? 14 : 10,
           ...row,
           justifyContent: "space-between",
         }}
