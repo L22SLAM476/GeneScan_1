@@ -296,9 +296,12 @@ jobs:
           : > appium-tests/results.ndjson
           : > appium-tests/execution.log
           for dir in appium-shards/appium-shard-*; do
-            [ -f "$dir/results.ndjson" ] && cat "$dir/results.ndjson" >> appium-tests/results.ndjson
-            [ -f "$dir/execution.log" ] && { echo "=== $(basename "$dir") ===" >> appium-tests/execution.log; cat "$dir/execution.log" >> appium-tests/execution.log; }
-            [ -d "$dir/screenshots" ] && cp -r "$dir/screenshots/." appium-tests/screenshots/
+            if [ -f "$dir/results.ndjson" ]; then cat "$dir/results.ndjson" >> appium-tests/results.ndjson; fi
+            if [ -f "$dir/execution.log" ]; then
+              echo "=== $(basename "$dir") ===" >> appium-tests/execution.log
+              cat "$dir/execution.log" >> appium-tests/execution.log
+            fi
+            if [ -d "$dir/screenshots" ]; then cp -r "$dir/screenshots/." appium-tests/screenshots/; fi
           done
       - name: Generate combined Android test report
         if: always()
