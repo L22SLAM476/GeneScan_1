@@ -94,6 +94,11 @@ def e2e(kind):
     ws=sheet(wb,"Module-wise Summary",["Module","Passed","Failed","Not run"],[[m,c["PASSED"],c["FAILED"],c["NOT RUN"]] for m,c in modules.items()])
     chart=BarChart();chart.title="Execution by module";chart.add_data(Reference(ws,min_col=2,max_col=4,min_row=1,max_row=ws.max_row),titles_from_data=True);chart.set_categories(Reference(ws,min_col=1,min_row=2,max_row=ws.max_row));ws.add_chart(chart,"F2")
     sheet(wb,"Defect Summary",["Test Case ID","Failure description","Severity"],defects)
+    if kind == "appium":
+        details = wb["Detailed Test Cases"]
+        wb.move_sheet(details, offset=-1)
+        wb.active = details
+        details.auto_filter.ref = details.dimensions
     save(wb,folder/(kind+"-test-report.xlsx"))
     job_summary(kind.title() + " test results", [(r[0]+" "+r[2], r[8]) for r in rows])
     print(kind,dict(counts))
